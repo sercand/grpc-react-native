@@ -512,7 +512,7 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 		})
 	} else if mapType == "Message" {
 		javaType := g.getJavaType(f.FieldDescriptorProto, file)
-		mesfield, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
+		mesfield, _ := g.reg.LookupMsg(file.GetPackage(), valueField.GetTypeName())
 		tempStart := `WritableMap in_{{innerMap}}_map = Arguments.createMap();`
 		tempEnd := `{{innerMap}}.putMap(k_{{javaMap}},in_{{innerMap}}_map);
 			`
