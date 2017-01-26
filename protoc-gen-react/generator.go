@@ -564,7 +564,7 @@ func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapNa
 	mapType := getReactMapType(f.FieldDescriptorProto)
 	tempStart := `
 	WritableArray {{innerArray}} = Arguments.createArray();
-	for({{JavaType}} value_{{innerArray}} : {{messageName}}.get{{javaName}}List(){`
+	for({{JavaType}} value_{{innerArray}} : {{messageName}}.get{{javaName}}List()){`
 	tempEnd := `
 	}
 	{{mapName}}.putArray("{{jsonName}}",{{innerArray}})
