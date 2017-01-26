@@ -28,7 +28,9 @@ import com.google.common.util.concurrent.Futures;
 import io.grpc.ManagedChannel;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import {{protoPackages}}.*;
@@ -174,7 +176,7 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, mapName string
 				"javaName":    strings.Title(javaName),
 				"mapName":     mapName,
 				"javaType":    getJavaType(f.GetType()),
-				"javaMapType": strings.Title(javaName),
+				"javaMapType": mapType,
 				"builderName": builderName,
 			})
 		} else if mapType == "Enum" {
