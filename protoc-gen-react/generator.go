@@ -567,7 +567,7 @@ func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapNa
 	for({{JavaType}} value_{{innerArray}} : {{messageName}}.get{{javaName}}List()){`
 	tempEnd := `
 	}
-	{{mapName}}.putArray("{{jsonName}}",{{innerArray}})
+	{{mapName}}.putArray("{{jsonName}}",{{innerArray}});
 	`
 	javaType := g.getJavaType(f.FieldDescriptorProto, file)
 	fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
