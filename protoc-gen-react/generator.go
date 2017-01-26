@@ -173,11 +173,11 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 	if mapType == "Bytes" {
 		temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 			ReadableArray array_{{jsonName}} = {{mapName}}.getArray("{{jsonName}}");
-			List<ByteString> list = new ArrayList<>();
-			for(int i = 0; i < array_{{jsonName}}.size(); i++){
-				list.add(ByteString.copyFromUtf8(array_{{jsonName}}.getString(i)));
+			List<ByteString> list_{{jsonName}} = new ArrayList<>();
+			for(int i_{{jsonName}} = 0; i_{{jsonName}} < array_{{jsonName}}.size(); i_{{jsonName}}++){
+				list_{{jsonName}}.add(ByteString.copyFromUtf8(array_{{jsonName}}.getString(i_{{jsonName}})));
 			}
-            {{builderName}}.addAll{{javaName}}(list);
+            {{builderName}}.addAll{{javaName}}(list_{{jsonName}});
         }
 `
 		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
@@ -191,12 +191,12 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 	} else if mapType == "Enum" {
 		temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 			ReadableArray array_{{jsonName}} = {{mapName}}.getArray("{{jsonName}}");
-			List<{{javaType}}> list = new ArrayList<>();
-			for(int i = 0; i < array_{{jsonName}}.size(); i++){
-			//	list.add(ByteString.copyFromUtf8(array_{{jsonName}}.getString(i)));
+			List<{{javaType}}> list_{{jsonName}} = new ArrayList<>();
+			for(int i_{{jsonName}} = 0; i_{{jsonName}} < array_{{jsonName}}.size(); i_{{jsonName}}++){
+			//	list_{{jsonName}}.add(ByteString.copyFromUtf8(array_{{jsonName}}.getString(i)));
 			//	{{builderName}}.set{{javaName}}Value({{mapName}}.getInt("{{jsonName}}"));
 			}
-            {{builderName}}.addAll{{javaName}}(list);
+            {{builderName}}.addAll{{javaName}}(list_{{jsonName}});
         }
 `
 		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
@@ -210,14 +210,14 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 	} else if mapType == "Message" {
 		tempStart := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 			ReadableArray array_{{jsonName}} = {{mapName}}.getArray("{{jsonName}}");
-			List<{{javaType}}> list = new ArrayList<>();
-			for(int i = 0; i < array_{{jsonName}}.size(); i++){
+			List<{{javaType}}> list_{{jsonName}} = new ArrayList<>();
+			for(int i_{{jsonName}} = 0; i_{{jsonName}} < array_{{jsonName}}.size(); i_{{jsonName}}++){
 				{{javaType}}.Builder {{jsonName}}_builder = {{javaType}}.newBuilder();
-				ReadableMap {{jsonName}}_map = array_{{jsonName}}.getMap(i);
+				ReadableMap {{jsonName}}_map = array_{{jsonName}}.getMap(i_{{jsonName}});
 `
-		tempEnd := `	list.add({{jsonName}}_builder.build());
+		tempEnd := `	list_{{jsonName}}.add({{jsonName}}_builder.build());
 			}
-            {{builderName}}.addAll{{javaName}}(list);
+            {{builderName}}.addAll{{javaName}}(list_{{jsonName}});
         }`
 		m, err := g.reg.LookupMsg(file.GetPackage(), f.FieldDescriptorProto.GetTypeName())
 		if err != nil {
@@ -242,11 +242,11 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 	} else {
 		temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 			ReadableArray array_{{jsonName}} = {{mapName}}.getArray("{{jsonName}}");
-			List<{{javaType}}> list = new ArrayList<>();
-			for(int i = 0; i < array_{{jsonName}}.size(); i++){
-				list.add(array_{{jsonName}}.get{{javaMapType}}(i));
+			List<{{javaType}}> list_{{jsonName}} = new ArrayList<>();
+			for(int i_{{jsonName}} = 0; i_{{jsonName}} < array_{{jsonName}}.size(); i_{{jsonName}}++){
+				list_{{jsonName}}.add(array_{{jsonName}}.get{{javaMapType}}(i_{{jsonName}}));
 			}
-            {{builderName}}.addAll{{javaName}}(list);
+            {{builderName}}.addAll{{javaName}}(list_{{jsonName}});
         }
 `
 		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
