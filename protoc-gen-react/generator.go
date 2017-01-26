@@ -160,6 +160,8 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, mapName string
 			mapType = "Map"
 		case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
 			mapType = "Enum"
+		case gdescriptor.FieldDescriptorProto_TYPE_BYTES:
+			mapType = "Bytes"
 		}
 		if isArray {
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
@@ -192,6 +194,19 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, mapName string
 			})
 		} else if mapType == "Map" {
 
+		} else if mapType == "Bytes" {
+			//TODO use base64
+			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
+            {{builderName}}.set{{javaName}}(ByteString.copyFromUtf8({{mapName}}.getString("{{jsonName}}")));
+        }
+`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(javaName),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"builderName": builderName,
+			})
 		} else {
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
             {{builderName}}.set{{javaName}}({{mapName}}.get{{mapType}}("{{jsonName}}"));
