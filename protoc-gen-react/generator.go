@@ -1,13 +1,8 @@
 package main
 
 import (
-	"fmt"
-	"path/filepath"
-	"strings"
-
 	"bytes"
-	"io"
-
+	"fmt"
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
 	gdescriptor "github.com/golang/protobuf/protoc-gen-go/descriptor"
@@ -15,6 +10,9 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor"
 	gen "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/generator"
 	"github.com/valyala/fasttemplate"
+	"io"
+	"path/filepath"
+	"strings"
 )
 
 const (
@@ -113,8 +111,7 @@ func NewGenerator(reg *descriptor.Registry, packageName string) gen.Generator {
 	return &generator{reg: reg, mapValues: []string{}, packageName: packageName}
 }
 
-func (g *generator) getJavaType(f *descriptor.Field, file *descriptor.File) string {
-
+func (g *generator) getJavaType(f *gdescriptor.FieldDescriptorProto, file *descriptor.File) string {
 	switch f.GetType() {
 	case gdescriptor.FieldDescriptorProto_TYPE_BOOL:
 		return "boolean"
@@ -133,16 +130,16 @@ func (g *generator) getJavaType(f *descriptor.Field, file *descriptor.File) stri
 	case gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
 		return "double"
 	case gdescriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		m, _ := g.reg.LookupMsg(file.GetPackage(), f.FieldDescriptorProto.GetTypeName())
+		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
 		return m.GetName()
 	case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
-		m, _ := g.reg.LookupMsg(file.GetPackage(), f.FieldDescriptorProto.GetTypeName())
+		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
 		return m.GetName()
 	}
 	return ""
 }
 
-func getReactMapType(f *descriptor.Field) string {
+func getReactMapType(f *gdescriptor.FieldDescriptorProto) string {
 	switch f.GetType() {
 	case gdescriptor.FieldDescriptorProto_TYPE_BOOL:
 		return "Boolean"
@@ -167,9 +164,16 @@ func getReactMapType(f *descriptor.Field) string {
 	}
 	return ""
 }
+func (g *generator) isMap(field *descriptor.Field, file *descriptor.File) bool {
+	m, err := g.reg.LookupMsg(file.GetPackage(), field.GetTypeName())
+	if err != nil {
+		return false
+	}
+	return m.GetOptions().GetMapEntry()
+}
 
 func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, mapName string, builderName string, buf io.Writer) error {
-	mapType := getReactMapType(f)
+	mapType := getReactMapType(f.FieldDescriptorProto)
 	if mapType == "Bytes" {
 		temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 			ReadableArray array_{{jsonName}} = {{mapName}}.getArray("{{jsonName}}");
@@ -184,7 +188,7 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
 			"mapName":     mapName,
-			"javaType":    g.getJavaType(f, file),
+			"javaType":    g.getJavaType(f.FieldDescriptorProto, file),
 			"javaMapType": mapType,
 			"builderName": builderName,
 		})
@@ -203,7 +207,7 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
 			"mapName":     mapName,
-			"javaType":    g.getJavaType(f, file),
+			"javaType":    g.getJavaType(f.FieldDescriptorProto, file),
 			"javaMapType": mapType,
 			"builderName": builderName,
 		})
@@ -219,11 +223,11 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 			}
             {{builderName}}.addAll{{javaName}}(list_{{jsonName}});
         }`
-		m, err := g.reg.LookupMsg(file.GetPackage(), f.FieldDescriptorProto.GetTypeName())
+		m, err := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
 		if err != nil {
 			return err
 		}
-		javaType := g.getJavaType(f, file)
+		javaType := g.getJavaType(f.FieldDescriptorProto, file)
 		fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
@@ -253,21 +257,135 @@ func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, m
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
 			"mapName":     mapName,
-			"javaType":    g.getJavaType(f, file),
+			"javaType":    g.getJavaType(f.FieldDescriptorProto, file),
 			"javaMapType": mapType,
 			"builderName": builderName,
 		})
 	}
 	return nil
 }
+func (g *generator) mapToBuilder(f *descriptor.Field, file *descriptor.File, mapName string, builderName string, buf io.Writer) error {
+	mapEntry, err := g.reg.LookupMsg(file.GetPackage(), f.FieldDescriptorProto.GetTypeName())
+	if err != nil {
+		return err
+	}
+	var valueField *gdescriptor.FieldDescriptorProto
+	for _, ff := range mapEntry.GetField() {
+		if ff.GetName() == "value" {
+			valueField = ff
+			break
+		}
+	}
+	mapType := getReactMapType(valueField)
+	if mapType == "Bytes" {
+		temp := `ReadableMap map_{{jsonName}} = {{mapName}}.getMap("{{jsonName}}");
+		ReadableMapKeySetIterator iter_{{jsonName}}= map_{{jsonName}}.keySetIterator();
+        while(iter_{{jsonName}}.hasNextKey()){
+			String key_{{jsonName}}=iter_{{jsonName}}.nextKey();
+			String value_{{jsonName}} = map_{{jsonName}}.getString(key_{{jsonName}});
+            {{builderName}}.put{{javaName}}(key_{{jsonName}}, ByteString.copyFromUtf8(value_{{jsonName}}));
+        }`
+		_, err := fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"builderName": builderName,
+			"mapType":     mapType,
+		})
+		return err
+	} else if mapType == "Enum" {
+		temp := ` ReadableMapKeySetIterator iter_{{jsonName}}={{mapName}}.getMap("{{jsonName}}").keySetIterator();
+        while(iter_{{jsonName}}.hasNextKey()){
+			String key_{{jsonName}}=iter_{{jsonName}}.nextKey();
+            {{builderName}}.put{{javaName}}(key_{{jsonName}}, {{mapName}}.getMap("{{jsonName}}").getInt(key_{{jsonName}}));
+        }`
+		_, err := fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"builderName": builderName,
+			"mapType":     mapType,
+		})
+		return err
+	} else if mapType == "Message" {
+		m, err := g.reg.LookupMsg(file.GetPackage(), valueField.GetName())
+		if err != nil {
+			return err
+		}
+		javaType := g.getJavaType(valueField, file)
+		tempStart := `ReadableMap map_{{jsonName}} = {{mapName}}.getMap("{{jsonName}}");
+		ReadableMapKeySetIterator iter_{{jsonName}}= map_{{jsonName}}.keySetIterator();
+        while(iter_{{jsonName}}.hasNextKey()){
+            {{javaType}}.Builder builder_{{jsonName}} = {{javaType}}.newBuilder();
+			String key_{{jsonName}}=iter_{{jsonName}}.nextKey();
+			ReadableMap map_{{jsonName}}_inner = map_{{jsonName}}.getMap(key_{{jsonName}});
+        `
+		tempEnd := `{{builderName}}.put{{javaName}}(key_{{jsonName}}, builder_{{jsonName}}.build());
+		}`
 
-func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descriptor.File, mapName string, builderName string, buf io.Writer) {
+		if _, err := fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"builderName": builderName,
+			"mapType":     mapType,
+			"javaType":    javaType,
+		}); err != nil {
+			return err
+		}
+		g.readableMapToBuilder(m, file, fmt.Sprintf("map_%s_inner", f.GetJsonName()), fmt.Sprintf("builder_%s", f.GetJsonName()), buf)
+
+		if _, err := fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"builderName": builderName,
+			"mapType":     mapType,
+			"javaType":    javaType,
+		}); err != nil {
+			return err
+		}
+
+	} else {
+		temp := `ReadableMap map_{{jsonName}} = {{mapName}}.getMap("{{jsonName}}");
+		ReadableMapKeySetIterator iter_{{jsonName}}= map_{{jsonName}}.keySetIterator();
+        while(iter_{{jsonName}}.hasNextKey()){
+			String key_{{jsonName}}=iter_{{jsonName}}.nextKey();
+            {{builderName}}.put{{javaName}}(key_{{jsonName}}, map_{{jsonName}}.get{{mapType}}(key_{{jsonName}}));
+        }`
+
+		_, err := fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"builderName": builderName,
+			"mapType":     mapType,
+		})
+		return err
+	}
+	return nil
+}
+func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descriptor.File, mapName string, builderName string, buf io.Writer) error {
 	for _, f := range mes.Fields {
 		javaName := f.GetJsonName()
-		mapType := getReactMapType(f)
+		mapType := getReactMapType(f.FieldDescriptorProto)
 		isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
-		if isArray {
-			g.arrayToBuilder(f, file, mapName, builderName, buf)
+
+		if g.isMap(f, file) {
+			temp := `if ({{mapName}}.hasKey("{{jsonName}}")) {
+`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"mapName":     mapName,
+			})
+			if err := g.mapToBuilder(f, file, mapName, builderName, buf); err != nil {
+				return err
+			}
+			buf.Write([]byte("}"))
+		} else if isArray {
+			if err := g.arrayToBuilder(f, file, mapName, builderName, buf); err != nil {
+				return err
+			}
 		} else if mapType == "Enum" {
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
             {{builderName}}.set{{javaName}}Value({{mapName}}.getInt("{{jsonName}}"));
@@ -280,7 +398,7 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 				"builderName": builderName,
 			})
 		} else if mapType == "Message" {
-			javaType := g.getJavaType(f, file)
+			javaType := g.getJavaType(f.FieldDescriptorProto, file)
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 				{{javaType}}.Builder builder_{{jsonName}} = {{javaType}}.newBuilder();
 				ReadableMap in_{{jsonName}} = {{mapName}}.getMap("{{jsonName}}");
@@ -297,7 +415,17 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 			g.readableMapToBuilder(mes, file,
 				fmt.Sprintf("in_%s", f.GetJsonName()),
 				fmt.Sprintf("builder_%s", f.GetJsonName()), buf)
-			buf.Write([]byte("}"))
+
+			tempEnd := `{{builderName}}.set{{javaName}}(builder_{{jsonName}});
+				}`
+			fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(javaName),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"builderName": builderName,
+				"javaType":    javaType,
+			})
 		} else if mapType == "Bytes" {
 			//TODO use base64
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
@@ -325,7 +453,9 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 			})
 		}
 	}
+	return nil
 }
+
 func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) {
 
 }
