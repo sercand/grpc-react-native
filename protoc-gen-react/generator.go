@@ -213,7 +213,7 @@ func (g *generator)arrayToBuilder(f *descriptor.Field, file *descriptor.File, ma
 			List<{{javaType}}> list = new ArrayList<>();
 			for(int i = 0; i < array.size(); i++){
 				{{javaType}}.Builder abuilder = {{javaType}}.newBuilder();
-				ReadaableMap ain = array.getMap(i);
+				ReadableMap ain = array.getMap(i);
 `
 		tempEnd := `	list.add(abuilder.build());
 			}
