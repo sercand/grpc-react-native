@@ -375,8 +375,8 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 			temp := `if ({{mapName}}.hasKey("{{jsonName}}")) {
 `
 			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"mapName":     mapName,
+				"jsonName": f.GetJsonName(),
+				"mapName":  mapName,
 			})
 			if err := g.mapToBuilder(f, file, mapName, builderName, buf); err != nil {
 				return err
@@ -456,8 +456,74 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 	return nil
 }
 
-func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) {
+func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
+	for _, f := range mes.Fields {
+		mapType := getReactMapType(f.FieldDescriptorProto)
+		isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
 
+		if g.isMap(f, file) {
+
+		} else if isArray {
+
+		} else if mapType == "Enum" {
+			temp := `{{mapName}}.put{{mapType}}({{messageName}}.get{{javaName}}());
+		`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(f.GetJsonName()),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"messageName": messageName,
+			})
+		} else if mapType == "Bytes" {
+			temp := `{{mapName}}.put{{mapType}}({{messageName}}.get{{javaName}}());
+		`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(f.GetJsonName()),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"messageName": messageName,
+			})
+		} else if mapType == "Message" {
+			javaType := g.getJavaType(f.FieldDescriptorProto, file)
+			mesfield, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
+			tempStart := `
+			WritableMap {{mapName}}_{{jsonName}} = Arguments.createMap();
+			{{javaType}} {{messageName}}_{{jsonName}} = {{messageName}}.get{{javaName}}();
+			`
+			tempEnd := `{{mapName}}.putMap({{mapName}}_{{jsonName}});
+
+			`
+			fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(f.GetJsonName()),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"messageName": messageName,
+				"javaType":javaType,
+			})
+			g.messageToMap(mesfield, file, fmt.Sprintf("%s_%s", mapName, f.GetJsonName()), fmt.Sprintf("%s_%s", messageName, f.GetJsonName()), buf)
+			fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(f.GetJsonName()),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"messageName": messageName,
+			})
+		} else {
+			temp := `{{mapName}}.put{{mapType}}({{messageName}}.get{{javaName}}());
+		`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(f.GetJsonName()),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"messageName": messageName,
+			})
+		}
+	}
+	return nil
 }
 
 func (g *generator) generateUnaryMethod(m *descriptor.Method, file *descriptor.File, buf io.Writer) error {
@@ -481,6 +547,10 @@ func (g *generator) generateUnaryMethod(m *descriptor.Method, file *descriptor.F
         Futures.addCallback(stub.{{methodName}}(builder.build()), new FutureCallback<{{responseName}}>() {
             @Override
             public void onSuccess(@Nullable {{responseName}} result) {
+            	if(result == null){
+            		promise.reject("null","response is null");
+            		return;
+            	}
                 WritableMap out = Arguments.createMap();
                 `
 	fasttemplate.Execute(futureTemp, "{{", "}}", buf, map[string]interface{}{
@@ -488,19 +558,19 @@ func (g *generator) generateUnaryMethod(m *descriptor.Method, file *descriptor.F
 		"methodName":   name,
 	})
 
-	g.messageToMap(m.ResponseType, file, "out", "result", buf)
+	if err := g.messageToMap(m.ResponseType, file, "out", "result", buf); err != nil {
+		return err
+	}
 
-	buf.Write([]byte(`promise.resolve(out);
+	_, err := buf.Write([]byte(`promise.resolve(out);
             }
 
             @Override
             public void onFailure(Throwable t) {
                 promise.reject(t);
             }
-        });`))
-
-	_, err := buf.Write([]byte("\n    }\n"))
-
+        });
+	}`))
 	return err
 }
 
