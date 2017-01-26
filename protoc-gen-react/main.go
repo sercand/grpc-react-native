@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	file = flag.String("file", "stdin", "where to load data from")
+	file = flag.String("file", "stdin", "Where to load data from")
+	packageName = flag.String("package", "", "Java package name, overrides default java_package option")
 )
 
 func parseReq(r io.Reader) (*plugin.CodeGeneratorRequest, error) {
@@ -63,20 +64,22 @@ func main() {
 			}
 		}
 	}
-	g := NewGenerator(reg)
+	g := NewGenerator(reg, *packageName)
 	if err := reg.Load(req); err != nil {
 		glog.Errorf("genangular emit error: %v", err)
 		emitError(err)
 		return
 	}
+
 	var targets []*descriptor.File
 	for _, target := range req.FileToGenerate {
 		f, err := reg.LookupFile(target)
 		if err != nil {
 			glog.Fatal(err)
 		}
-
-		targets = append(targets, f)
+		if len(f.GetService()) > 0 {
+			targets = append(targets, f)
+		}
 	}
 
 	out, err := g.Generate(targets)
