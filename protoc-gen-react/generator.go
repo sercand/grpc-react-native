@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"bytes"
+	"io"
+
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
 	gdescriptor "github.com/golang/protobuf/protoc-gen-go/descriptor"
@@ -13,7 +15,6 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor"
 	gen "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/generator"
 	"github.com/valyala/fasttemplate"
-	"io"
 )
 
 const (
@@ -66,7 +67,7 @@ func ToJsonName(pre string) string {
 	word := pre[:1]
 	ss := make([]string, 0)
 	for i := 1; i < len(pre); i++ {
-		letter := pre[i : i + 1]
+		letter := pre[i : i+1]
 		if word != "" && strings.ToUpper(letter) == letter {
 			ss = append(ss, word)
 			if letter != "_" && letter != "-" {
@@ -91,7 +92,7 @@ func ToJsonName(pre string) string {
 
 func ToParamName(pre string) string {
 	ss := strings.Split(pre, ".")
-	return ToJsonName(ss[len(ss) - 1])
+	return ToJsonName(ss[len(ss)-1])
 }
 
 func ToFileName(pre string) string {
@@ -128,7 +129,7 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, mapName string
 			gdescriptor.FieldDescriptorProto_TYPE_SFIXED32,
 			gdescriptor.FieldDescriptorProto_TYPE_SFIXED64,
 			gdescriptor.FieldDescriptorProto_TYPE_SINT32,
-			gdescriptor.FieldDescriptorProto_TYPE_SINT64 :
+			gdescriptor.FieldDescriptorProto_TYPE_SINT64:
 			mapType = "Int"
 		case gdescriptor.FieldDescriptorProto_TYPE_FLOAT,
 			gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
@@ -170,13 +171,14 @@ func (g *generator) generateUnaryMethod(m *descriptor.Method, buf io.Writer) err
 
 	g.readableMapToBuilder(m.RequestType, "in", "builder", buf)
 	futureTemp := `
-        Futures.addCallback(stub.get(builder.build()), new FutureCallback<{{responseName}}>() {
+        Futures.addCallback(stub.{{methodName}}(builder.build()), new FutureCallback<{{responseName}}>() {
             @Override
             public void onSuccess(@Nullable {{responseName}} result) {
                 WritableMap out = Arguments.createMap();
                 `
 	fasttemplate.Execute(futureTemp, "{{", "}}", buf, map[string]interface{}{
 		"responseName": m.ResponseType.GetName(),
+		"methodName":   name,
 	})
 
 	g.messageToMap(m.ResponseType, "out", "result", buf)
@@ -243,7 +245,7 @@ func (g *generator) Generate(targets []*descriptor.File) ([]*plugin.CodeGenerato
 		name := file.GetName()
 		ext := filepath.Ext(name)
 		base := strings.TrimSuffix(name, ext)
-		output := fmt.Sprintf("%s.java", ToFileName(base))
+		output := fmt.Sprintf("%sModule.java", ToFileName(base))
 		files = append(files, &plugin.CodeGeneratorResponse_File{
 			Name:    proto.String(output),
 			Content: proto.String(str),
