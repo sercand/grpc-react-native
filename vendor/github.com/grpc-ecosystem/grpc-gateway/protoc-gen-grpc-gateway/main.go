@@ -1,3 +1,11 @@
+// Command protoc-gen-grpc-gateway is a plugin for Google protocol buffer
+// compiler to generate a reverse-proxy, which converts incoming RESTful
+// HTTP/1 requests gRPC invocation.
+// You rarely need to run this program directly. Instead, put this program
+// into your $PATH with a name "protoc-gen-grpc-gateway" and run
+//   protoc --grpc-gateway_out=output_directory path/to/input.proto
+//
+// See README.md for more details.
 package main
 
 import (
@@ -11,13 +19,16 @@ import (
 	"github.com/golang/protobuf/proto"
 	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
 	"github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor"
+	"github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/gengateway"
 )
 
 var (
-	file = flag.String("file", "stdin", "where to load data from")
+	importPrefix      = flag.String("import_prefix", "", "prefix to be added to go package paths for imported proto files")
+	useRequestContext = flag.Bool("request_context", false, "determine whether to use http.Request's context or not")
 )
 
 func parseReq(r io.Reader) (*plugin.CodeGeneratorRequest, error) {
+	glog.V(1).Info("Parsing code generator request")
 	input, err := ioutil.ReadAll(r)
 	if err != nil {
 		glog.Errorf("Failed to read code generator request: %v", err)
@@ -28,19 +39,18 @@ func parseReq(r io.Reader) (*plugin.CodeGeneratorRequest, error) {
 		glog.Errorf("Failed to unmarshal code generator request: %v", err)
 		return nil, err
 	}
+	glog.V(1).Info("Parsed code generator request")
 	return req, nil
 }
 
 func main() {
 	flag.Parse()
 	defer glog.Flush()
+
 	reg := descriptor.NewRegistry()
+
 	glog.V(1).Info("Processing code generator request")
-	f := os.Stdin
-	if *file != "stdin" {
-		f, _ = os.Open(*file)
-	}
-	req, err := parseReq(f)
+	req, err := parseReq(os.Stdin)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -63,19 +73,21 @@ func main() {
 			}
 		}
 	}
-	g := NewGenerator(reg)
+
+	g := gengateway.New(reg, *useRequestContext)
+
+	reg.SetPrefix(*importPrefix)
 	if err := reg.Load(req); err != nil {
-		glog.Errorf("genangular emit error: %v", err)
 		emitError(err)
 		return
 	}
+
 	var targets []*descriptor.File
 	for _, target := range req.FileToGenerate {
 		f, err := reg.LookupFile(target)
 		if err != nil {
 			glog.Fatal(err)
 		}
-
 		targets = append(targets, f)
 	}
 

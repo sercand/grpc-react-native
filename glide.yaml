@@ -1,2 +1,9 @@
 package: github.com/sercand/grpc-react-native
-import: []
+import:
+- package: github.com/golang/protobuf
+  subpackages:
+  - protoc-gen-go
+- package: github.com/grpc-ecosystem/grpc-gateway
+  subpackages:
+  - protoc-gen-grpc-gateway
+- package: github.com/valyala/fasttemplate
