@@ -467,7 +467,7 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 	}
 	mapType := getReactMapType(valueField)
 	tempStart := `
-			Map<String,{{JavaValue}}> {{javaMap}} = {{messageName}}.get{{javaName}}();
+			Map<String,{{JavaValue}}> {{javaMap}} = {{messageName}}.get{{javaName}}Map();
 			WritableMap {{innerMap}} = Arguments.createMap();
 			for(String k_{{javaMap}}: {{javaMap}}.keySet()){
 				{{JavaValue}} v_{{javaMap}} = {{javaMap}}.get(k_{{javaMap}});
@@ -513,12 +513,8 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 	} else if mapType == "Message" {
 		javaType := g.getJavaType(f.FieldDescriptorProto, file)
 		mesfield, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
-		tempStart := `
-			WritableMap {{innerMap}}_{{jsonName}} = Arguments.createMap();
-			{{javaType}} {{messageName}}_{{jsonName}} = {{messageName}}.get{{javaName}}();
-			`
-		tempEnd := `{{innerMap}}.putMap(k_{{javaMap}},{{innerMap}}_{{jsonName}});
-
+		tempStart := `WritableMap in_{{innerMap}}_map = Arguments.createMap();`
+		tempEnd := `{{innerMap}}.putMap(k_{{javaMap}},in_{{innerMap}}_map);
 			`
 		fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
 			"jsonName":    f.GetJsonName(),
@@ -529,7 +525,7 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 			"innerMap":    innerMap,
 			"javaMap":     javaMap,
 		})
-		g.messageToMap(mesfield, file, fmt.Sprintf("%s_%s", mapName, f.GetJsonName()), fmt.Sprintf("%s_%s", messageName, f.GetJsonName()), buf)
+		g.messageToMap(mesfield, file, fmt.Sprintf("in_%s_map", innerMap), fmt.Sprintf("v_%s", javaMap), buf)
 		fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
