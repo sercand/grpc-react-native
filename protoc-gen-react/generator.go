@@ -67,7 +67,7 @@ func ToJsonName(pre string) string {
 	word := pre[:1]
 	ss := make([]string, 0)
 	for i := 1; i < len(pre); i++ {
-		letter := pre[i : i+1]
+		letter := pre[i : i + 1]
 		if word != "" && strings.ToUpper(letter) == letter {
 			ss = append(ss, word)
 			if letter != "_" && letter != "-" {
@@ -92,7 +92,7 @@ func ToJsonName(pre string) string {
 
 func ToParamName(pre string) string {
 	ss := strings.Split(pre, ".")
-	return ToJsonName(ss[len(ss)-1])
+	return ToJsonName(ss[len(ss) - 1])
 }
 
 func ToFileName(pre string) string {
@@ -110,12 +110,32 @@ func NewGenerator(reg *descriptor.Registry, packageName string) gen.Generator {
 	return &generator{reg: reg, mapValues: []string{}, packageName: packageName}
 }
 
+func getJavaType(t gdescriptor.FieldDescriptorProto_Type) string {
+	switch t {
+	case gdescriptor.FieldDescriptorProto_TYPE_BOOL:
+		return "boolean"
+	case gdescriptor.FieldDescriptorProto_TYPE_STRING:
+		return "String"
+	case gdescriptor.FieldDescriptorProto_TYPE_INT32,
+		gdescriptor.FieldDescriptorProto_TYPE_INT64,
+		gdescriptor.FieldDescriptorProto_TYPE_SFIXED32,
+		gdescriptor.FieldDescriptorProto_TYPE_SFIXED64,
+		gdescriptor.FieldDescriptorProto_TYPE_SINT32,
+		gdescriptor.FieldDescriptorProto_TYPE_SINT64:
+		return "int"
+	case gdescriptor.FieldDescriptorProto_TYPE_FLOAT,
+		gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
+		return "Double"
+	case gdescriptor.FieldDescriptorProto_TYPE_MESSAGE:
+		return "Map"
+	case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
+		return "Enum"
+	}
+	return ""
+}
+
 func (g *generator) readableMapToBuilder(mes *descriptor.Message, mapName string, builderName string, buf io.Writer) {
 	for _, f := range mes.Fields {
-		temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
-            {{builderName}}.set{{javaName}}({{mapName}}.get{{mapType}}("{{jsonName}}"));
-        }
-`
 		javaName := f.GetJsonName()
 		mapType := "String"
 		isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
@@ -136,17 +156,53 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, mapName string
 			mapType = "Double"
 		case gdescriptor.FieldDescriptorProto_TYPE_MESSAGE:
 			mapType = "Map"
+		case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
+			mapType = "Enum"
 		}
 		if isArray {
-			mapType = "Array"
+			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
+			ReadableArray array = {{mapName}}.getArray("{{jsonName}}");
+			List<{{javaType}}> list = new ArrayList<>();
+			for(int i = 0; i < array.size(); i++){
+				list.add(array.get{{javaMapType}}(i));
+			}
+            {{builderName}}.addAll{{javaName}}(list);
+        }
+`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(javaName),
+				"mapName":     mapName,
+				"javaType":    getJavaType(f.GetType()),
+				"javaMapType": strings.Title(javaName),
+				"builderName": builderName,
+			})
+		} else if mapType == "Enum" {
+			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
+            {{builderName}}.set{{javaName}}Value({{mapName}}.getInt("{{jsonName}}"));
+        }
+`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(javaName),
+				"mapName":     mapName,
+				"builderName": builderName,
+			})
+		} else if mapType == "Map" {
+
+		} else {
+			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
+            {{builderName}}.set{{javaName}}({{mapName}}.get{{mapType}}("{{jsonName}}"));
+        }
+`
+			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+				"jsonName":    f.GetJsonName(),
+				"javaName":    strings.Title(javaName),
+				"mapType":     mapType,
+				"mapName":     mapName,
+				"builderName": builderName,
+			})
 		}
-		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
-			"jsonName":    f.GetJsonName(),
-			"javaName":    strings.Title(javaName),
-			"mapType":     mapType,
-			"mapName":     mapName,
-			"builderName": builderName,
-		})
 	}
 }
 func (g *generator) messageToMap(mes *descriptor.Message, mapName string, messageName string, buf io.Writer) {
