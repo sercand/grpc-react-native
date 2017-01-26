@@ -466,7 +466,7 @@ func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File,
 		} else if isArray {
 
 		} else if mapType == "Enum" {
-			temp := `{{mapName}}.put{{mapType}}({{messageName}}.get{{javaName}}());
+			temp := `{{mapName}}.putInt("{{jsonName}}",{{messageName}}.get{{javaName}}());
 		`
 			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
 				"jsonName":    f.GetJsonName(),
@@ -476,7 +476,7 @@ func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File,
 				"messageName": messageName,
 			})
 		} else if mapType == "Bytes" {
-			temp := `{{mapName}}.put{{mapType}}({{messageName}}.get{{javaName}}());
+			temp := `{{mapName}}.put{{mapType}}("{{jsonName}}",{{messageName}}.get{{javaName}}());
 		`
 			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
 				"jsonName":    f.GetJsonName(),
@@ -492,7 +492,7 @@ func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File,
 			WritableMap {{mapName}}_{{jsonName}} = Arguments.createMap();
 			{{javaType}} {{messageName}}_{{jsonName}} = {{messageName}}.get{{javaName}}();
 			`
-			tempEnd := `{{mapName}}.putMap({{mapName}}_{{jsonName}});
+			tempEnd := `{{mapName}}.putMap("{{jsonName}}",{{mapName}}_{{jsonName}});
 
 			`
 			fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
@@ -512,7 +512,7 @@ func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File,
 				"messageName": messageName,
 			})
 		} else {
-			temp := `{{mapName}}.put{{mapType}}({{messageName}}.get{{javaName}}());
+			temp := `{{mapName}}.put{{mapType}}("{{jsonName}}",{{messageName}}.get{{javaName}}());
 		`
 			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
 				"jsonName":    f.GetJsonName(),
