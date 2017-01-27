@@ -771,7 +771,7 @@ func (g *generator) generateUnaryMethod(m *descriptor.Method, file *descriptor.F
 	@ReactMethod
     public void {{methodName}}(ReadableMap in, final Promise promise) {
         ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
-        {{serviceName}}Grpc.{{serviceName}}FutureStub stub = {{serviceName}}Grpc.newFutureStub(ch);
+        {{serviceName}}Grpc.{{serviceName}}FutureStub stub = this.engine.attachHeaders({{serviceName}}Grpc.newFutureStub(ch));
         {{requestName}}.Builder builder = {{requestName}}.newBuilder();
 `
 
@@ -865,7 +865,7 @@ func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descr
 	})
 	endTemp := `
 		ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
-        {{serviceName}}Grpc.newStub(ch).{{methodName}}(builder.build(),observer);
+        this.engine.attachHeaders({{serviceName}}Grpc.newStub(ch)).{{methodName}}(builder.build(),observer);
     }`
 	_, err := fasttemplate.Execute(endTemp, "{{", "}}", buf, map[string]interface{}{
 		"serviceName":  m.Service.GetName(),
@@ -933,7 +933,7 @@ func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File
     public void {{methodName}}(final Callback callback, Promise promise) {
         {{className}} streamer = new {{className}}(callback);
         ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
-        streamer.outgoing = {{serviceName}}Grpc.newStub(ch).{{grpcName}}(streamer.incoming);
+        streamer.outgoing = this.engine.attachHeaders({{serviceName}}Grpc.newStub(ch)).{{grpcName}}(streamer.incoming);
         if ({{className}}Map == null) {
             {{className}}Map = new HashMap<>();
         }
