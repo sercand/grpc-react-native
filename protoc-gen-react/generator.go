@@ -838,7 +838,7 @@ func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File
         StreamObserver<{{requestType}}> outgoing;
         Callback callback;
 
-        CustomEventStreamer(Callback cb) {
+        {{className}}(Callback cb) {
             this.id = java.util.UUID.randomUUID().toString();
             this.callback = cb;
             this.incoming = new StreamObserver<{{responseType}}>() {
