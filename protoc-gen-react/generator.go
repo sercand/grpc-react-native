@@ -769,9 +769,74 @@ func (g *generator) generateUnaryMethod(m *descriptor.Method, file *descriptor.F
 	return err
 }
 
+func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descriptor.File, buf io.Writer) error {
+	name := ToJsonName(m.GetName())
+	met := `
+	@ReactMethod
+    public void {{methodName}}(ReadableMap in, final Callback callback) {
+        {{requestName}}.Builder builder = {{requestName}}.newBuilder();
+`
+
+	fasttemplate.Execute(met, "{{", "}}", buf, map[string]interface{}{
+		"serviceName": m.Service.GetName(),
+		"methodName":  name,
+		"requestName": m.RequestType.GetName(),
+	})
+
+	g.readableMapToBuilder(m.RequestType, file, "in", "builder", buf)
+
+	streamStart := `StreamObserver<{{responseName}}> observer = new StreamObserver<{{responseName}}>() {
+            @Override
+            public void onNext({{responseName}} value) {
+            	WritableMap out = Arguments.createMap();
+           `
+	fasttemplate.Execute(streamStart, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"responseName": m.ResponseType.GetName(),
+		"requestName":  m.RequestType.GetName(),
+	})
+	if err := g.messageToMap(m.ResponseType, file, "out", "value", buf); err != nil {
+		return err
+	}
+
+	streamEnd := `
+	     		callback.invoke(out, false, null);
+            }
+
+            @Override
+            public void onError(Throwable t) {
+				callback.invoke(null, true, t.getMessage());
+            }
+
+            @Override
+            public void onCompleted() {
+            	callback.invoke(null,true,null);
+            }
+        };
+	`
+	fasttemplate.Execute(streamEnd, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"responseName": m.ResponseType.GetName(),
+		"requestName":  m.RequestType.GetName(),
+	})
+	endTemp := `
+		ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
+        {{serviceName}}Grpc.newStub(ch).{{methodName}}(builder.build(),observer);
+    }`
+	_, err := fasttemplate.Execute(endTemp, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"responseName": m.ResponseType.GetName(),
+		"methodName":   name,
+	})
+
+	return err
+}
+
 func (g *generator) generateMethod(m *descriptor.Method, file *descriptor.File, buf io.Writer) error {
 	if m.GetClientStreaming() == false && m.GetServerStreaming() == false {
 		return g.generateUnaryMethod(m, file, buf)
+	} else if m.GetClientStreaming() == false && m.GetServerStreaming() == true {
+		return g.generateOutputStreamMethod(m, file, buf)
 	}
 	return nil
 }
