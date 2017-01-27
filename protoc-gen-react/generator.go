@@ -135,30 +135,32 @@ func (g *generator) getJavaType(f *gdescriptor.FieldDescriptorProto, file *descr
 	return ""
 }
 
-func getReactMapType(f *gdescriptor.FieldDescriptorProto) string {
+func getReactMapType(f *gdescriptor.FieldDescriptorProto) (string, string) {
 	switch f.GetType() {
 	case gdescriptor.FieldDescriptorProto_TYPE_BOOL:
-		return "Boolean"
+		return "Boolean", ""
 	case gdescriptor.FieldDescriptorProto_TYPE_STRING:
-		return "String"
+		return "String", ""
 	case gdescriptor.FieldDescriptorProto_TYPE_INT32,
-		gdescriptor.FieldDescriptorProto_TYPE_INT64,
 		gdescriptor.FieldDescriptorProto_TYPE_SFIXED32,
+		gdescriptor.FieldDescriptorProto_TYPE_SINT32:
+		return "Int", ""
+	case gdescriptor.FieldDescriptorProto_TYPE_INT64,
 		gdescriptor.FieldDescriptorProto_TYPE_SFIXED64,
-		gdescriptor.FieldDescriptorProto_TYPE_SINT32,
 		gdescriptor.FieldDescriptorProto_TYPE_SINT64:
-		return "Int"
-	case gdescriptor.FieldDescriptorProto_TYPE_FLOAT,
-		gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
-		return "Double"
+		return "Int", "(int)"
+	case gdescriptor.FieldDescriptorProto_TYPE_FLOAT:
+		return "Double", "(float)"
+	case gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
+		return "Double", ""
 	case gdescriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		return "Message"
+		return "Message", ""
 	case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
-		return "Enum"
+		return "Enum", ""
 	case gdescriptor.FieldDescriptorProto_TYPE_BYTES:
-		return "Bytes"
+		return "Bytes", ""
 	}
-	return ""
+	return "", ""
 }
 func (g *generator) isMap(field *descriptor.Field, file *descriptor.File) bool {
 	m, err := g.reg.LookupMsg(file.GetPackage(), field.GetTypeName())
@@ -169,7 +171,7 @@ func (g *generator) isMap(field *descriptor.Field, file *descriptor.File) bool {
 }
 
 func (g *generator) arrayToBuilder(f *descriptor.Field, file *descriptor.File, mapName string, builderName string, buf io.Writer) error {
-	mapType := getReactMapType(f.FieldDescriptorProto)
+	mapType, _ := getReactMapType(f.FieldDescriptorProto)
 	if mapType == "Bytes" {
 		temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
 			ReadableArray array_{{jsonName}} = {{mapName}}.getArray("{{jsonName}}");
@@ -272,7 +274,7 @@ func (g *generator) mapToBuilder(f *descriptor.Field, file *descriptor.File, map
 			break
 		}
 	}
-	mapType := getReactMapType(valueField)
+	mapType, _ := getReactMapType(valueField)
 	if mapType == "Bytes" {
 		temp := `ReadableMap map_{{jsonName}} = {{mapName}}.getMap("{{jsonName}}");
 		ReadableMapKeySetIterator iter_{{jsonName}}= map_{{jsonName}}.keySetIterator();
@@ -364,7 +366,7 @@ func (g *generator) mapToBuilder(f *descriptor.Field, file *descriptor.File, map
 func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descriptor.File, mapName string, builderName string, buf io.Writer) error {
 	for _, f := range mes.Fields {
 		javaName := f.GetJsonName()
-		mapType := getReactMapType(f.FieldDescriptorProto)
+		mapType, cast := getReactMapType(f.FieldDescriptorProto)
 		isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
 
 		if g.isMap(f, file) {
@@ -425,6 +427,7 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 		} else if mapType == "Bytes" {
 			//TODO use base64
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
+			//TODO use base64
             {{builderName}}.set{{javaName}}(ByteString.copyFromUtf8({{mapName}}.getString("{{jsonName}}")));
         }
 `
@@ -437,7 +440,7 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 			})
 		} else {
 			temp := `		if ({{mapName}}.hasKey("{{jsonName}}")) {
-            {{builderName}}.set{{javaName}}({{mapName}}.get{{mapType}}("{{jsonName}}"));
+            {{builderName}}.set{{javaName}}({{typeCast}}{{mapName}}.get{{mapType}}("{{jsonName}}"));
         }
 `
 			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
@@ -446,6 +449,7 @@ func (g *generator) readableMapToBuilder(mes *descriptor.Message, file *descript
 				"mapType":     mapType,
 				"mapName":     mapName,
 				"builderName": builderName,
+				"typeCast":    cast,
 			})
 		}
 	}
@@ -466,7 +470,7 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 			break
 		}
 	}
-	mapType := getReactMapType(valueField)
+	mapType, _ := getReactMapType(valueField)
 	tempStart := `
 			Map<String,{{JavaValue}}> {{javaMap}} = {{messageName}}.get{{javaName}}Map();
 			WritableMap {{innerMap}} = Arguments.createMap();
@@ -562,7 +566,7 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
 	innerArray := fmt.Sprintf("%s_%s", mapName, f.GetJsonName())
 
-	mapType := getReactMapType(f.FieldDescriptorProto)
+	mapType, _ := getReactMapType(f.FieldDescriptorProto)
 	tempStart := `
 	WritableArray {{innerArray}} = Arguments.createArray();
 	for({{JavaType}} value_{{innerArray}} : {{messageName}}.get{{javaName}}List()){`
@@ -648,7 +652,7 @@ func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapNa
 
 func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
 	for _, f := range mes.Fields {
-		mapType := getReactMapType(f.FieldDescriptorProto)
+		mapType, cast := getReactMapType(f.FieldDescriptorProto)
 		isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
 
 		if g.isMap(f, file) {
@@ -697,18 +701,8 @@ func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File,
 				"mapName":     mapName,
 				"messageName": messageName,
 			})
-		} else if mapType == "Int" {
-			//TODO this is sucks use string for long values
-			temp := `{{mapName}}.putInt("{{jsonName}}",(int){{messageName}}.get{{javaName}}());
-		`
-			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"javaName":    strings.Title(f.GetJsonName()),
-				"mapName":     mapName,
-				"messageName": messageName,
-			})
 		} else {
-			temp := `{{mapName}}.put{{mapType}}("{{jsonName}}",{{messageName}}.get{{javaName}}());
+			temp := `{{mapName}}.put{{mapType}}("{{jsonName}}",{{typeCast}} {{messageName}}.get{{javaName}}());
 		`
 			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
 				"jsonName":    f.GetJsonName(),
@@ -716,6 +710,7 @@ func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File,
 				"mapType":     mapType,
 				"mapName":     mapName,
 				"messageName": messageName,
+				"typeCast":    cast,
 			})
 		}
 	}
