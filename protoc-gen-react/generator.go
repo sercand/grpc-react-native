@@ -530,7 +530,7 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 			"innerMap":    innerMap,
 			"javaMap":     javaMap,
 		})
-		g.messageToMap(mesfield, file, fmt.Sprintf("in_%s_map", innerMap), fmt.Sprintf("v_%s", javaMap), buf)
+		g.protoMessageToReactMap(mesfield, file, fmt.Sprintf("in_%s_map", innerMap), fmt.Sprintf("v_%s", javaMap), buf)
 		fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
@@ -563,13 +563,14 @@ func (g *generator) javaMapToMap(f *descriptor.Field, file *descriptor.File, map
 	return nil
 }
 
-func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
+func (g *generator) protoArrayToReactMap(f *descriptor.Field, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
 	innerArray := fmt.Sprintf("%s_%s", mapName, f.GetJsonName())
 
 	mapType, _ := getReactMapType(f.FieldDescriptorProto)
 	tempStart := `
 	WritableArray {{innerArray}} = Arguments.createArray();
-	for({{JavaType}} value_{{innerArray}} : {{messageName}}.get{{javaName}}List()){`
+	for({{JavaType}} value_{{innerArray}} : {{messageName}}.get{{javaName}}List()){
+	`
 	tempEnd := `
 	}
 	{{mapName}}.putArray("{{jsonName}}",{{innerArray}});
@@ -618,7 +619,7 @@ func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapNa
 			"javaType":    javaType,
 			"innerArray":  innerArray,
 		})
-		g.messageToMap(mesfield, file, fmt.Sprintf("array_%s_map", innerArray), fmt.Sprintf("value_%s", innerArray), buf)
+		g.protoMessageToReactMap(mesfield, file, fmt.Sprintf("array_%s_map", innerArray), fmt.Sprintf("value_%s", innerArray), buf)
 		fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
 			"jsonName":    f.GetJsonName(),
 			"javaName":    strings.Title(f.GetJsonName()),
@@ -650,69 +651,104 @@ func (g *generator) arrayToMap(f *descriptor.Field, file *descriptor.File, mapNa
 	return nil
 }
 
-func (g *generator) messageToMap(mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
-	for _, f := range mes.Fields {
-		mapType, cast := getReactMapType(f.FieldDescriptorProto)
-		isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
-
-		if g.isMap(f, file) {
-			g.javaMapToMap(f, file, mapName, messageName, buf)
-		} else if isArray {
-			g.arrayToMap(f, file, mapName, messageName, buf)
-		} else if mapType == "Enum" {
-			temp := `{{mapName}}.putInt("{{jsonName}}",{{messageName}}.get{{javaName}}Value());
+func (g *generator) protoMessageFieldToReactMap(f *descriptor.Field, mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
+	mapType, cast := getReactMapType(f.FieldDescriptorProto)
+	isArray := f.GetLabel() == gdescriptor.FieldDescriptorProto_LABEL_REPEATED
+	if g.isMap(f, file) {
+		g.javaMapToMap(f, file, mapName, messageName, buf)
+	} else if isArray {
+		g.protoArrayToReactMap(f, file, mapName, messageName, buf)
+	} else if mapType == "Enum" {
+		temp := `{{mapName}}.putInt("{{jsonName}}",{{messageName}}.get{{javaName}}Value());
 		`
-			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"javaName":    strings.Title(f.GetJsonName()),
-				"mapName":     mapName,
-				"messageName": messageName,
-			})
-		} else if mapType == "Bytes" {
-			temp := `{{mapName}}.putString("{{jsonName}}",{{messageName}}.get{{javaName}}().toStringUtf8());
+		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"messageName": messageName,
+		})
+	} else if mapType == "Bytes" {
+		temp := `{{mapName}}.putString("{{jsonName}}",{{messageName}}.get{{javaName}}().toStringUtf8());
 		`
-			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"javaName":    strings.Title(f.GetJsonName()),
-				"mapName":     mapName,
-				"messageName": messageName,
-			})
-		} else if mapType == "Message" {
-			javaType := g.getJavaType(f.FieldDescriptorProto, file)
-			mesfield, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
-			tempStart := `
+		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"messageName": messageName,
+		})
+	} else if mapType == "Message" {
+		javaType := g.getJavaType(f.FieldDescriptorProto, file)
+		mesfield, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
+		tempStart := `
 			WritableMap {{mapName}}_{{jsonName}} = Arguments.createMap();
 			{{javaType}} {{messageName}}_{{jsonName}} = {{messageName}}.get{{javaName}}();
 			`
-			tempEnd := `{{mapName}}.putMap("{{jsonName}}",{{mapName}}_{{jsonName}});
+		tempEnd := `{{mapName}}.putMap("{{jsonName}}",{{mapName}}_{{jsonName}});
 
 			`
-			fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"javaName":    strings.Title(f.GetJsonName()),
-				"mapName":     mapName,
-				"messageName": messageName,
-				"javaType":    javaType,
-			})
-			g.messageToMap(mesfield, file, fmt.Sprintf("%s_%s", mapName, f.GetJsonName()), fmt.Sprintf("%s_%s", messageName, f.GetJsonName()), buf)
-			fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"javaName":    strings.Title(f.GetJsonName()),
-				"mapName":     mapName,
-				"messageName": messageName,
-			})
-		} else {
-			temp := `{{mapName}}.put{{mapType}}("{{jsonName}}",{{typeCast}} {{messageName}}.get{{javaName}}());
+		fasttemplate.Execute(tempStart, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"messageName": messageName,
+			"javaType":    javaType,
+		})
+		g.protoMessageToReactMap(mesfield, file, fmt.Sprintf("%s_%s", mapName, f.GetJsonName()), fmt.Sprintf("%s_%s", messageName, f.GetJsonName()), buf)
+		fasttemplate.Execute(tempEnd, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapName":     mapName,
+			"messageName": messageName,
+		})
+	} else {
+		temp := `{{mapName}}.put{{mapType}}("{{jsonName}}",{{typeCast}} {{messageName}}.get{{javaName}}());
 		`
-			fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
-				"jsonName":    f.GetJsonName(),
-				"javaName":    strings.Title(f.GetJsonName()),
-				"mapType":     mapType,
-				"mapName":     mapName,
-				"messageName": messageName,
-				"typeCast":    cast,
-			})
+		fasttemplate.Execute(temp, "{{", "}}", buf, map[string]interface{}{
+			"jsonName":    f.GetJsonName(),
+			"javaName":    strings.Title(f.GetJsonName()),
+			"mapType":     mapType,
+			"mapName":     mapName,
+			"messageName": messageName,
+			"typeCast":    cast,
+		})
+	}
+	return nil
+}
+
+func (g *generator) protoMessageToReactMap(mes *descriptor.Message, file *descriptor.File, mapName string, messageName string, buf io.Writer) error {
+	for _, f := range mes.Fields {
+		if f.OneofIndex != nil {
+			continue
 		}
+		g.protoMessageFieldToReactMap(f, mes, file, mapName, messageName, buf)
+	}
+
+	for oi, o := range mes.GetOneofDecl() {
+		switchTempStart := `switch({{messageName}}.get{{oneOfName}}Case()){
+		`
+		fasttemplate.Execute(switchTempStart, "{{", "}}", buf, map[string]interface{}{
+			"messageName": messageName,
+			"oneOfName":   strings.Title(o.GetName()),
+		})
+		for _, f := range mes.Fields {
+			if f.OneofIndex == nil || f.GetOneofIndex() != int32(oi) {
+				continue
+			}
+			caseStart := `case {{caseName}}:`
+			fasttemplate.Execute(caseStart, "{{", "}}", buf, map[string]interface{}{
+				"caseName": strings.ToUpper(f.GetName()),
+			})
+			g.protoMessageFieldToReactMap(f, mes, file, mapName, messageName, buf)
+			buf.Write([]byte(`break;`))
+		}
+
+		fasttemplate.Execute(`
+			case {{oneOfName}}_NOT_SET:
+			break;
+		}
+		`, "{{", "}}", buf, map[string]interface{}{
+			"oneOfName":   strings.ToUpper(o.GetName()),
+		})
 	}
 	return nil
 }
@@ -749,7 +785,7 @@ func (g *generator) generateUnaryMethod(m *descriptor.Method, file *descriptor.F
 		"methodName":   name,
 	})
 
-	if err := g.messageToMap(m.ResponseType, file, "out", "result", buf); err != nil {
+	if err := g.protoMessageToReactMap(m.ResponseType, file, "out", "result", buf); err != nil {
 		return err
 	}
 
@@ -791,7 +827,7 @@ func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descr
 		"responseName": m.ResponseType.GetName(),
 		"requestName":  m.RequestType.GetName(),
 	})
-	if err := g.messageToMap(m.ResponseType, file, "out", "value", buf); err != nil {
+	if err := g.protoMessageToReactMap(m.ResponseType, file, "out", "value", buf); err != nil {
 		return err
 	}
 
@@ -853,7 +889,7 @@ func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File
 		"responseType": m.ResponseType.GetName(),
 		"className":    className,
 	})
-	g.messageToMap(m.ResponseType, file, "in", "value", buf)
+	g.protoMessageToReactMap(m.ResponseType, file, "in", "value", buf)
 	classTemplateEnd := `
                     callback.invoke(in, false, null);
                 }
