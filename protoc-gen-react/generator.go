@@ -126,8 +126,16 @@ func (g *generator) getJavaType(f *gdescriptor.FieldDescriptorProto, file *descr
 	case gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
 		return "double"
 	case gdescriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
-		return m.GetName()
+		pkg := file.GetPackage()
+		tname := f.GetTypeName()
+		if strings.HasPrefix(tname, ".") {
+			tname = strings.Replace(tname, "." + pkg + ".", "", -1)
+		} else {
+			tname = strings.Replace(tname, pkg + ".", "", -1)
+		}
+		return tname
+	//		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
+	//		return m.GetName()
 	case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
 		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
 		return m.GetName()
@@ -734,12 +742,15 @@ func (g *generator) protoMessageToReactMap(mes *descriptor.Message, file *descri
 			if f.OneofIndex == nil || f.GetOneofIndex() != int32(oi) {
 				continue
 			}
-			caseStart := `case {{caseName}}:`
+			caseStart := `case {{caseName}}:
+			`
 			fasttemplate.Execute(caseStart, "{{", "}}", buf, map[string]interface{}{
 				"caseName": strings.ToUpper(f.GetName()),
 			})
 			g.protoMessageFieldToReactMap(f, mes, file, mapName, messageName, buf)
-			buf.Write([]byte(`break;`))
+			buf.Write([]byte(`
+			break;
+			`))
 		}
 
 		fasttemplate.Execute(`
