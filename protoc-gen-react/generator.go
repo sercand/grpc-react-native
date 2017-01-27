@@ -24,8 +24,9 @@ import com.facebook.react.bridge.*;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import io.grpc.ManagedChannel;
-import com.google.protobuf.ByteString;
+import io.grpc.stub.StreamObserver;
 
+import com.google.protobuf.ByteString;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -68,7 +69,7 @@ func ToJsonName(pre string) string {
 	word := pre[:1]
 	ss := make([]string, 0)
 	for i := 1; i < len(pre); i++ {
-		letter := pre[i : i+1]
+		letter := pre[i : i + 1]
 		if word != "" && strings.ToUpper(letter) == letter {
 			ss = append(ss, word)
 			if letter != "_" && letter != "-" {
@@ -832,11 +833,138 @@ func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descr
 	return err
 }
 
+func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File, buf io.Writer) error {
+	name := ToJsonName(m.GetName())
+	className := fmt.Sprintf("%sStreamer", strings.Title(name))
+	classTemplateStart := `
+	private class {{className}} {
+        public String id;
+        StreamObserver<{{responseType}}> incoming;
+        StreamObserver<{{requestType}}> outgoing;
+        Callback callback;
+
+        CustomEventStreamer(Callback cb) {
+            this.id = java.util.UUID.randomUUID().toString();
+            this.callback = cb;
+            this.incoming = new StreamObserver<{{responseType}}>() {
+                @Override
+                public void onNext({{responseType}} value) {
+                	WritableMap in = Arguments.createMap();
+                   `
+	fasttemplate.Execute(classTemplateStart, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"methodName":   name,
+		"requestType":  m.RequestType.GetName(),
+		"responseType": m.ResponseType.GetName(),
+		"className":    className,
+	})
+	g.messageToMap(m.ResponseType, file, "in", "value", buf)
+	classTemplateEnd := `
+                    callback.invoke(in, false, null);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                    callback.invoke(null, true, t.getMessage());
+                }
+
+                @Override
+                public void onCompleted() {
+                    callback.invoke(null, true, null);
+                }
+            };
+        }
+    }
+    private Map<String, {{className}}> {{className}}Map;
+`
+	fasttemplate.Execute(classTemplateEnd, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"methodName":   name,
+		"requestType":  m.RequestType.GetName(),
+		"responseType": m.ResponseType.GetName(),
+		"className":    className,
+	})
+
+	startMethod := `
+	@ReactMethod
+    public void {{methodName}}(final Callback callback, Promise promise) {
+        {{className}} streamer = new {{className}}(callback);
+        ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
+        streamer.outgoing = {{serviceName}}Grpc.newStub(ch).{{grpcName}}(streamer.incoming);
+        if ({{className}}Map == null) {
+            {{className}}Map = new HashMap<>();
+        }
+        {{className}}Map.put(streamer.id, streamer);
+        promise.resolve(streamer.id);
+    }
+	`
+	fasttemplate.Execute(startMethod, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"methodName":   fmt.Sprintf("start%s", strings.Title(name)),
+		"grpcName":     name,
+		"requestType":  m.RequestType.GetName(),
+		"responseType": m.ResponseType.GetName(),
+		"className":    className,
+	})
+
+	methodStart := `
+   @ReactMethod
+    public void {{grpcName}}(String id, String action, ReadableMap in) {
+        if ({{className}}Map.containsKey(id)) {
+            {{className}} streamer = {{className}}Map.get(id);
+            switch (action) {
+                case "complete":
+                    streamer.outgoing.onCompleted();
+                    {{className}}Map.remove(id);
+                    break;
+                case "error":
+                    streamer.outgoing.onError(new Throwable());
+					{{className}}Map.remove(id);
+                    break;
+                default:
+                    {{requestType}}.Builder builder = {{requestType}}.newBuilder();
+	`
+	fasttemplate.Execute(methodStart, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"methodName":   fmt.Sprintf("start%s", strings.Title(name)),
+		"grpcName":     name,
+		"requestType":  m.RequestType.GetName(),
+		"responseType": m.ResponseType.GetName(),
+		"className":    className,
+	})
+
+	g.readableMapToBuilder(m.RequestType, file, "in", "builder", buf)
+
+	methodEnd := `
+                    streamer.outgoing.onNext(builder.build());
+                    break;
+            }
+        }
+    }
+	`
+	fasttemplate.Execute(methodEnd, "{{", "}}", buf, map[string]interface{}{
+		"serviceName":  m.Service.GetName(),
+		"methodName":   fmt.Sprintf("start%s", strings.Title(name)),
+		"grpcName":     name,
+		"requestType":  m.RequestType.GetName(),
+		"responseType": m.ResponseType.GetName(),
+		"className":    className,
+	})
+	return nil
+}
+
 func (g *generator) generateMethod(m *descriptor.Method, file *descriptor.File, buf io.Writer) error {
-	if m.GetClientStreaming() == false && m.GetServerStreaming() == false {
+	client := m.GetClientStreaming()
+	server := m.GetServerStreaming()
+
+	if !client && !server {
 		return g.generateUnaryMethod(m, file, buf)
-	} else if m.GetClientStreaming() == false && m.GetServerStreaming() == true {
+	} else if !client && server {
 		return g.generateOutputStreamMethod(m, file, buf)
+	} else if client && server {
+		return g.generateBiStream(m, file, buf)
+	} else {
+		panic("client side streaming not implemented")
 	}
 	return nil
 }
