@@ -126,7 +126,8 @@ func (g *generator) getJavaType(f *gdescriptor.FieldDescriptorProto, file *descr
 	case gdescriptor.FieldDescriptorProto_TYPE_DOUBLE:
 		return "double"
 	case gdescriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		pkg := file.GetPackage()
+		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
+		pkg := m.File.GetPackage()
 		tname := f.GetTypeName()
 		if strings.HasPrefix(tname, ".") {
 			tname = strings.Replace(tname, "." + pkg + ".", "", -1)
@@ -134,8 +135,7 @@ func (g *generator) getJavaType(f *gdescriptor.FieldDescriptorProto, file *descr
 			tname = strings.Replace(tname, pkg + ".", "", -1)
 		}
 		return tname
-	//		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
-	//		return m.GetName()
+
 	case gdescriptor.FieldDescriptorProto_TYPE_ENUM:
 		m, _ := g.reg.LookupMsg(file.GetPackage(), f.GetTypeName())
 		return m.GetName()
@@ -732,7 +732,8 @@ func (g *generator) protoMessageToReactMap(mes *descriptor.Message, file *descri
 	}
 
 	for oi, o := range mes.GetOneofDecl() {
-		switchTempStart := `switch({{messageName}}.get{{oneOfName}}Case()){
+		switchTempStart := `
+		switch({{messageName}}.get{{oneOfName}}Case()){
 		`
 		fasttemplate.Execute(switchTempStart, "{{", "}}", buf, map[string]interface{}{
 			"messageName": messageName,
