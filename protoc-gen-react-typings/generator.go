@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"reflect"
+	"strconv"
+
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
 	desc "github.com/golang/protobuf/protoc-gen-go/descriptor"
@@ -14,8 +17,6 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/descriptor"
 	gen "github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/generator"
 	"github.com/valyala/fasttemplate"
-	"reflect"
-	"strconv"
 )
 
 var (
@@ -70,7 +71,7 @@ func (g *generator) getRawTypeName(file *descriptor.File, a string) string {
 		panic(fmt.Errorf("%s is not message or enum", a))
 		return ""
 	}
-	return prefix + ss[len(ss) - 1]
+	return prefix + ss[len(ss)-1]
 }
 
 func (g *generator) getTypeName(t desc.FieldDescriptorProto_Type, field *desc.FieldDescriptorProto, file *descriptor.File) string {
@@ -126,7 +127,7 @@ func ToJsonName(pre string) string {
 	word := pre[:1]
 	ss := make([]string, 0)
 	for i := 1; i < len(pre); i++ {
-		letter := pre[i : i + 1]
+		letter := pre[i : i+1]
 		if word != "" && strings.ToUpper(letter) == letter {
 			ss = append(ss, word)
 			if letter != "_" && letter != "-" {
@@ -151,7 +152,7 @@ func ToJsonName(pre string) string {
 
 func ToParamName(pre string) string {
 	ss := strings.Split(pre, ".")
-	return ToJsonName(ss[len(ss) - 1])
+	return ToJsonName(ss[len(ss)-1])
 }
 func printComment(b io.Writer, comment string) {
 	if len(comment) > 0 {
@@ -173,7 +174,7 @@ func (g *generator) generate(file *descriptor.File, index io.Writer) (string, er
 		if len(m.Outers) > 0 {
 			prefix = strings.Join(m.Outers, "")
 		}
-		fmt.Fprintf(index, "export interface %s {\n", prefix + m.GetName())
+		fmt.Fprintf(index, "interface %s {\n", prefix+m.GetName())
 		for _, f := range m.GetField() {
 			g.printMessageField(index, f, file)
 		}
@@ -181,13 +182,13 @@ func (g *generator) generate(file *descriptor.File, index io.Writer) (string, er
 		newTemp := `
 /**
  *
- * @returns { {{returnType}} }
+ * @returns {[returnType]}
  */
-export function new{{returnType}}(){
+export function new[returnType](){
 	return {};
 }
 `
-		fasttemplate.Execute(newTemp, "{{", "}}", &buf, map[string]interface{}{
+		fasttemplate.Execute(newTemp, "[", "]", &buf, map[string]interface{}{
 			"returnType": m.GetName(),
 		})
 	}
@@ -199,15 +200,15 @@ export function new{{returnType}}(){
 import { NativeModules } from 'react-native';
 /**
  *
- * @returns { {{serviceName}} }
+ * @returns {[serviceName]}
  */
-function __{{serviceName}}() {
-    return NativeModules.{{serviceName}};
+function __[serviceName]() {
+    return NativeModules.[serviceName];
 }
 
-export const {{serviceName}} = __{{serviceName}}();
+export const [serviceName] = __[serviceName]();
 `
-		fasttemplate.Execute(tmpHeader, "{{", "}}", &buf, map[string]interface{}{
+		fasttemplate.Execute(tmpHeader, "[", "]", &buf, map[string]interface{}{
 			"serviceName": s.GetName(),
 		})
 
@@ -316,7 +317,7 @@ func protoComments(reg *descriptor.Registry, file *descriptor.File, outers []str
 			location = file.GetPackage()
 		}
 
-		msg, err := reg.LookupMsg(location, strings.Join(outers[:i + 1], "."))
+		msg, err := reg.LookupMsg(location, strings.Join(outers[:i+1], "."))
 		if err != nil {
 			panic(err)
 		}
@@ -358,7 +359,7 @@ func isProtoPathMatches(paths []int32, outerPaths []int32, typeName string, type
 		return true
 	}
 
-	if len(paths) != len(outerPaths) * 2 + 2 + len(fieldPaths) {
+	if len(paths) != len(outerPaths)*2+2+len(fieldPaths) {
 		return false
 	}
 
@@ -371,11 +372,11 @@ func isProtoPathMatches(paths []int32, outerPaths []int32, typeName string, type
 		outerPaths = outerPaths[1:]
 
 		for i, v := range outerPaths {
-			if paths[i * 2] != nestedProtoPath || paths[i * 2 + 1] != v {
+			if paths[i*2] != nestedProtoPath || paths[i*2+1] != v {
 				return false
 			}
 		}
-		paths = paths[len(outerPaths) * 2:]
+		paths = paths[len(outerPaths)*2:]
 
 		if typeName == "MessageType" {
 			typeName = "NestedType"
