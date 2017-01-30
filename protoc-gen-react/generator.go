@@ -21,6 +21,7 @@ const (
 package {{packageName}};
 
 import com.facebook.react.bridge.*;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import io.grpc.ManagedChannel;
@@ -897,11 +898,9 @@ func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File
         public String id;
         StreamObserver<{{responseType}}> incoming;
         StreamObserver<{{requestType}}> outgoing;
-        Callback callback;
 
-        {{className}}(Callback cb) {
+        {{className}}() {
             this.id = java.util.UUID.randomUUID().toString();
-            this.callback = cb;
             this.incoming = new StreamObserver<{{responseType}}>() {
                 @Override
                 public void onNext({{responseType}} value) {
@@ -916,17 +915,29 @@ func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File
 	})
 	g.protoMessageToReactMap(m.ResponseType, file, "in", "value", buf)
 	classTemplateEnd := `
-                    callback.invoke(in, false, null);
+
+                    WritableMap data = Arguments.createMap();
+                    data.putBoolean("done", false);
+                    data.putMap("data", in);
+                    getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                            .emit(id, data);
                 }
 
                 @Override
                 public void onError(Throwable t) {
-                    callback.invoke(null, true, t.getMessage());
+                    WritableMap data = Arguments.createMap();
+                    data.putBoolean("done", true);
+                    data.putString("error", t.getMessage());
+                    getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                            .emit(id, data);
                 }
 
                 @Override
                 public void onCompleted() {
-                    callback.invoke(null, true, null);
+                    WritableMap data = Arguments.createMap();
+                    data.putBoolean("done", true);
+                    getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                            .emit(id, data);
                 }
             };
         }
@@ -943,8 +954,8 @@ func (g *generator) generateBiStream(m *descriptor.Method, file *descriptor.File
 
 	startMethod := `
 	@ReactMethod
-    public void {{methodName}}(final Callback callback, Promise promise) {
-        {{className}} streamer = new {{className}}(callback);
+    public void {{methodName}}(Promise promise) {
+        {{className}} streamer = new {{className}}();
         ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
         streamer.outgoing = this.engine.attachHeaders({{serviceName}}Grpc.newStub(ch)).{{grpcName}}(streamer.incoming);
         if ({{className}}Map == null) {

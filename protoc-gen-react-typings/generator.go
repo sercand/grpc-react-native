@@ -229,7 +229,7 @@ interface {{serviceName}} {
 					"responseType": m.ResponseType.GetName(),
 				})
 			} else if server && client {
-				fasttemplate.Execute(`    start{{bigMethodName}}(cb: (resp: {{responseType}}, done: boolean, err: string) => void): Promise<string>;
+				fasttemplate.Execute(`    start{{bigMethodName}}(): Promise<string>;
 	{{methodName}}(id: string, action: string, event: {{requestType}});
 `, "{{", "}}", index, map[string]interface{}{
 					"methodName":    ToJsonName(m.GetName()),
