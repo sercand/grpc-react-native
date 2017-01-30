@@ -150,10 +150,6 @@ func ToJsonName(pre string) string {
 	return strings.Join(ss, "")
 }
 
-func ToParamName(pre string) string {
-	ss := strings.Split(pre, ".")
-	return ToJsonName(ss[len(ss)-1])
-}
 func printComment(b io.Writer, comment string) {
 	if len(comment) > 0 {
 		fmt.Fprintf(b, "/**\n%s\n*/\n", comment)
@@ -242,7 +238,7 @@ interface {{serviceName}} {
 					"responseType":  m.ResponseType.GetName(),
 				})
 			} else if server && !client {
-				fasttemplate.Execute(`    {{methodName}}(req: {{requestType}}, cb: (resp: {{responseType}}, done: boolean, err: string) => void);
+				fasttemplate.Execute(`    {{methodName}}(req: {{requestType}}): Promise<string>;
 `, "{{", "}}", index, map[string]interface{}{
 					"methodName":   ToJsonName(m.GetName()),
 					"requestType":  m.RequestType.GetName(),

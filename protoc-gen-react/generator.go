@@ -817,8 +817,9 @@ func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descr
 	name := ToJsonName(m.GetName())
 	met := `
 	@ReactMethod
-    public void {{methodName}}(ReadableMap in, final Callback callback) {
+    public void {{methodName}}(ReadableMap in, final Promise promise) {
         {{requestName}}.Builder builder = {{requestName}}.newBuilder();
+		final String eventID = java.util.UUID.randomUUID().toString();
 `
 
 	fasttemplate.Execute(met, "{{", "}}", buf, map[string]interface{}{
@@ -844,17 +845,28 @@ func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descr
 	}
 
 	streamEnd := `
-	     		callback.invoke(out, false, null);
+				WritableMap data = Arguments.createMap();
+                data.putBoolean("done", false);
+                data.putMap("data", out);
+                getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                        .emit(eventID, data);
             }
 
             @Override
             public void onError(Throwable t) {
-				callback.invoke(null, true, t.getMessage());
+                WritableMap data = Arguments.createMap();
+                data.putBoolean("done", true);
+                data.putString("error", t.getMessage());
+                getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                        .emit(eventID, data);
             }
 
             @Override
             public void onCompleted() {
-            	callback.invoke(null,true,null);
+                WritableMap data = Arguments.createMap();
+                data.putBoolean("done", true);
+                getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                        .emit(eventID, data);
             }
         };
 	`
@@ -866,6 +878,7 @@ func (g *generator) generateOutputStreamMethod(m *descriptor.Method, file *descr
 	endTemp := `
 		ManagedChannel ch = this.engine.byServiceName({{serviceName}}Grpc.SERVICE_NAME);
         this.engine.attachHeaders({{serviceName}}Grpc.newStub(ch)).{{methodName}}(builder.build(),observer);
+		promise.resolve(eventID);
     }`
 	_, err := fasttemplate.Execute(endTemp, "{{", "}}", buf, map[string]interface{}{
 		"serviceName":  m.Service.GetName(),
