@@ -108,7 +108,22 @@ func (g *generator) isMap(field *desc.FieldDescriptorProto, file *descriptor.Fil
 
 func (g *generator) printMessageField(w io.Writer, field *desc.FieldDescriptorProto, file *descriptor.File) {
 	if g.isMap(field, file) {
-		fmt.Fprintf(w, "  %s: Object;\n", field.GetJsonName())
+		mapEntry, err := g.reg.LookupMsg(file.GetPackage(), field.GetTypeName())
+		if err != nil {
+			return
+		}
+		var valueField *desc.FieldDescriptorProto
+		for _, ff := range mapEntry.GetField() {
+			if ff.GetName() == "value" {
+				valueField = ff
+				break
+			}
+		}
+		fasttemplate.Execute(`  {{fieldName}}: { [key: string]: {{valueType}} };
+		`, "{{", "}}", w, map[string]interface{}{
+			"fieldName": field.GetJsonName(),
+			"valueType": valueField.GetName(),
+		})
 	} else if field.GetLabel() == desc.FieldDescriptorProto_LABEL_REPEATED {
 		tn := g.getTypeName(field.GetType(), field, file)
 		if strings.Index(tn, "|") > -1 {
